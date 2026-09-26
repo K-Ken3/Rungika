@@ -1,0 +1,725 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  FINANCE
+  SUPPORT
+  AUDITOR
+}
+
+enum MembershipRole {
+  OWNER
+  MANAGER
+  EMPLOYEE
+  READ_ONLY
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  INACTIVE
+}
+
+enum BusinessStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  GRACE_PERIOD
+  PAUSED
+  CANCELLED
+}
+
+enum SubscriptionStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  GRACE_PERIOD
+  PAST_DUE
+  PAUSED
+  CANCELLED
+}
+
+enum SubscriptionHistoryStatus {
+  PENDING_PAYMENT
+  ACTIVE
+  GRACE_PERIOD
+  PAST_DUE
+  PAUSED
+  CANCELLED
+}
+
+enum BillingInterval {
+  MONTH
+  QUARTER
+  YEAR
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  VOID
+  OVERDUE
+}
+
+enum PaymentClaimStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  CONFIRMED
+  REJECTED
+  CANCELLED
+}
+
+enum PaymentMethod {
+  MOMO
+  MANUAL
+}
+
+enum PaymentStatus {
+  CONFIRMED
+  REVERSED
+}
+
+enum PaymentKind {
+  PAYMENT
+  REFUND
+  REVERSAL
+  ADJUSTMENT
+}
+
+enum FieldType {
+  SHORT_TEXT
+  LONG_TEXT
+  NUMBER
+  CURRENCY
+  DATE
+  DATETIME
+  CHECKBOX
+  SELECT
+  MULTI_SELECT
+  EMAIL
+  PHONE
+  URL
+  FILE
+}
+
+enum RecordStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum NotificationType {
+  PAYMENT_DUE
+  GRACE_PERIOD
+  ACCOUNT_PAUSED
+  PAYMENT_CONFIRMED
+  PAYMENT_REJECTED
+  SYSTEM
+}
+
+enum DeliveryChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum SupportCaseStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+model User {
+  id                      String                      @id @default(cuid())
+  name                    String
+  email                   String                      @unique
+  phone                   String?                     @unique
+  passwordHash            String
+  status                  UserStatus                  @default(ACTIVE)
+  emailVerifiedAt         DateTime?
+  phoneVerifiedAt         DateTime?
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+  sessions                Session[]
+  memberships             BusinessMembership[]        @relation("MembershipUser")
+  businessesCreated       Business[]                  @relation("BusinessCreator")
+  invitationsSent         Invitation[]                @relation("InvitationSender")
+  invitationsAccepted     Invitation[]                @relation("InvitationAcceptor")
+  unitsCreated            BusinessUnit[]              @relation("UnitCreator")
+  tablesCreated           CustomTable[]               @relation("TableCreator")
+  recordsCreated          CustomRecord[]              @relation("RecordCreator")
+  recordsUpdated          CustomRecord[]              @relation("RecordUpdater")
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  claimsSubmitted         PaymentClaim[]              @relation("ClaimSubmitter")
+  claimsUnderReview       PaymentClaim[]              @relation("ClaimReviewer")
+  subscriptionHistory     SubscriptionStatusHistory[]
+  settingsCreated         PlatformSetting[]           @relation("SettingsCreator")
+  settingsUpdated         PlatformSetting[]           @relation("SettingsUpdater")
+  auditLogs               AuditLog[]                  @relation("AuditActor")
+  notifications           Notification[]
+  supportCases            SupportCase[]               @relation("SupportReporter")
+  businessNotesWritten    BusinessAdminNote[]         @relation("AdminNoteAuthor")
+  adminMembership         AdminMembership?
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  expiresAt  DateTime
+  lastUsedAt DateTime @default(now())
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AdminMembership {
+  id           String        @id @default(cuid())
+  userId       String        @unique
+  role         AdminRole
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments     Payment[]
+  supportCases SupportCase[]
+
+  @@index([role, active])
+}
+
+model Business {
+  id            String               @id @default(cuid())
+  name          String
+  slug          String               @unique
+  category      String?
+  description   String?
+  country       String
+  location      String?
+  phone         String?
+  email         String?
+  logoKey       String?
+  timezone      String               @default("UTC")
+  currency      String               @default("USD")
+  status        BusinessStatus       @default(PENDING_PAYMENT)
+  adminHold     Boolean              @default(false)
+  pauseReason   String?
+  createdById   String
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  createdBy     User                 @relation("BusinessCreator", fields: [createdById], references: [id])
+  memberships   BusinessMembership[]
+  units         BusinessUnit[]
+  roles         Role[]
+  invitations   Invitation[]
+  customTables  CustomTable[]
+  subscription  Subscription?
+  invoices      Invoice[]
+  paymentClaims PaymentClaim[]
+  payments      Payment[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  supportCases  SupportCase[]
+  adminNotes    BusinessAdminNote[]
+  CustomRecord  CustomRecord[]
+
+  @@index([status, createdAt])
+  @@index([name])
+}
+
+model BusinessMembership {
+  id          String           @id @default(cuid())
+  businessId  String
+  userId      String
+  roleId      String
+  unitId      String?
+  status      MembershipStatus @default(ACTIVE)
+  jobTitle    String?
+  startDate   DateTime?
+  invitedById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user        User             @relation("MembershipUser", fields: [userId], references: [id], onDelete: Cascade)
+  role        Role             @relation(fields: [roleId], references: [id])
+  unit        BusinessUnit?    @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, userId])
+  @@index([userId, status])
+  @@index([businessId, roleId])
+}
+
+model Role {
+  id          String               @id @default(cuid())
+  businessId  String
+  name        String
+  description String?
+  isSystem    Boolean              @default(false)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  business    Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  permissions RolePermission[]
+  memberships BusinessMembership[]
+  invitations Invitation[]
+
+  @@unique([businessId, name])
+  @@index([businessId])
+}
+
+model Permission {
+  id              String            @id @default(cuid())
+  key             String            @unique
+  module          String
+  action          PermissionAction
+  description     String
+  roles           RolePermission[]
+  FieldPermission FieldPermission[]
+
+  @@index([module, action])
+}
+
+enum PermissionAction {
+  VIEW
+  CREATE
+  EDIT
+  DELETE
+  EXPORT
+  MANAGE_USERS
+  MANAGE_SETTINGS
+  MANAGE_BILLING
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model BusinessUnit {
+  id          String               @id @default(cuid())
+  businessId  String
+  parentId    String?
+  name        String
+  type        String               @default("DEPARTMENT")
+  description String?
+  createdById String
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  business    Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent      BusinessUnit?        @relation("UnitHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    BusinessUnit[]       @relation("UnitHierarchy")
+  createdBy   User                 @relation("UnitCreator", fields: [createdById], references: [id])
+  memberships BusinessMembership[]
+
+  @@unique([businessId, parentId, name])
+  @@index([businessId, parentId])
+}
+
+model CustomTable {
+  id          String         @id @default(cuid())
+  businessId  String
+  name        String
+  slug        String
+  description String?
+  createdById String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  business    Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy   User           @relation("TableCreator", fields: [createdById], references: [id])
+  fields      CustomField[]
+  records     CustomRecord[]
+
+  @@unique([businessId, slug])
+  @@index([businessId, updatedAt])
+}
+
+model CustomField {
+  id           String            @id @default(cuid())
+  tableId      String
+  key          String
+  label        String
+  type         FieldType
+  required     Boolean           @default(false)
+  position     Int
+  defaultValue Json?
+  options      Json?
+  validation   Json?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  table        CustomTable       @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  permissions  FieldPermission[]
+
+  @@unique([tableId, key])
+  @@unique([tableId, position])
+}
+
+model FieldPermission {
+  id           String      @id @default(cuid())
+  fieldId      String
+  permissionId String
+  field        CustomField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  permission   Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([fieldId, permissionId])
+  @@index([permissionId])
+}
+
+model CustomRecord {
+  id          String       @id @default(cuid())
+  businessId  String
+  tableId     String
+  data        Json
+  status      RecordStatus @default(ACTIVE)
+  createdById String
+  updatedById String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  archivedAt  DateTime?
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  table       CustomTable  @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation("RecordCreator", fields: [createdById], references: [id])
+  updatedBy   User?        @relation("RecordUpdater", fields: [updatedById], references: [id])
+
+  @@index([businessId, tableId, status])
+  @@index([tableId, createdAt])
+}
+
+model Invitation {
+  id           String           @id @default(cuid())
+  businessId   String
+  roleId       String
+  email        String
+  phone        String?
+  tokenHash    String           @unique
+  status       MembershipStatus @default(INVITED)
+  invitedById  String
+  acceptedById String?
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  business     Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  role         Role             @relation(fields: [roleId], references: [id])
+  invitedBy    User             @relation("InvitationSender", fields: [invitedById], references: [id])
+  acceptedBy   User?            @relation("InvitationAcceptor", fields: [acceptedById], references: [id])
+
+  @@unique([businessId, email, roleId])
+  @@index([businessId, status])
+  @@index([email])
+}
+
+model Plan {
+  id            String          @id @default(cuid())
+  name          String
+  amountMinor   Int
+  currency      String
+  interval      BillingInterval
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                 String                      @id @default(cuid())
+  businessId         String                      @unique
+  planId             String?
+  planNameSnapshot   String
+  amountMinor        Int
+  currency           String
+  interval           BillingInterval
+  status             SubscriptionStatus          @default(PENDING_PAYMENT)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  dueDate            DateTime
+  graceEndsAt        DateTime?
+  pausedAt           DateTime?
+  cancelledAt        DateTime?
+  autoRenew          Boolean                     @default(true)
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  business           Business                    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan               Plan?                       @relation(fields: [planId], references: [id], onDelete: SetNull)
+  invoices           Invoice[]
+  payments           Payment[]
+  statusHistory      SubscriptionStatusHistory[]
+
+  @@index([status, dueDate])
+}
+
+model SubscriptionStatusHistory {
+  id             String                    @id @default(cuid())
+  subscriptionId String
+  fromStatus     SubscriptionStatus?
+  toStatus       SubscriptionHistoryStatus
+  reason         String?
+  changedById    String?
+  createdAt      DateTime                  @default(now())
+  subscription   Subscription              @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  changedBy      User?                     @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([subscriptionId, createdAt])
+}
+
+model Invoice {
+  id             String         @id @default(cuid())
+  businessId     String
+  subscriptionId String
+  number         String         @unique
+  amountMinor    Int
+  currency       String
+  periodStart    DateTime
+  periodEnd      DateTime
+  dueDate        DateTime
+  status         InvoiceStatus  @default(OPEN)
+  paidAt         DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  business       Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscription   Subscription   @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  claims         PaymentClaim[]
+  payment        Payment?
+
+  @@unique([subscriptionId, periodStart, periodEnd])
+  @@index([businessId, status, dueDate])
+}
+
+model PaymentClaim {
+  id              String             @id @default(cuid())
+  businessId      String
+  invoiceId       String
+  submittedById   String
+  amountMinor     Int
+  currency        String
+  sentAt          DateTime
+  reference       String
+  note            String?
+  proofKey        String?
+  proofName       String?
+  proofMime       String?
+  status          PaymentClaimStatus @default(SUBMITTED)
+  underReviewById String?
+  reviewedAt      DateTime?
+  decisionReason  String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  business        Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice         Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  submittedBy     User               @relation("ClaimSubmitter", fields: [submittedById], references: [id])
+  underReviewBy   User?              @relation("ClaimReviewer", fields: [underReviewById], references: [id])
+  payment         Payment?
+
+  @@unique([businessId, reference])
+  @@index([status, createdAt])
+  @@index([invoiceId, status])
+}
+
+model Payment {
+  id             String          @id @default(cuid())
+  businessId     String
+  subscriptionId String
+  invoiceId      String          @unique
+  claimId        String?         @unique
+  adminId        String
+  amountMinor    Int
+  currency       String
+  reference      String          @unique
+  method         PaymentMethod
+  kind           PaymentKind     @default(PAYMENT)
+  status         PaymentStatus   @default(CONFIRMED)
+  periodStart    DateTime
+  periodEnd      DateTime
+  receiptNumber  String          @unique
+  notes          String?
+  confirmedAt    DateTime        @default(now())
+  reversedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  subscription   Subscription    @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  invoice        Invoice         @relation(fields: [invoiceId], references: [id])
+  claim          PaymentClaim?   @relation(fields: [claimId], references: [id])
+  admin          AdminMembership @relation(fields: [adminId], references: [id])
+
+  @@index([businessId, confirmedAt])
+  @@index([status, createdAt])
+}
+
+model PlatformSetting {
+  id                        String          @id @default("default")
+  planName                  String          @default("Business")
+  priceMinor                Int             @default(300)
+  currency                  String          @default("USD")
+  billingInterval           BillingInterval @default(MONTH)
+  trialDays                 Int             @default(30)
+  gracePeriodDays           Int             @default(3)
+  claimReviewDays           Int             @default(5)
+  reminderDays              Int[]           @default([7, 3, 1])
+  momoProvider              String?
+  momoRecipientName         String?
+  momoMerchantCode          String?
+  momoCountry               String?
+  paymentCurrency           String          @default("USD")
+  referenceFormat           String          @default("RUNGIKA-{BUSINESS}-{DUE_DATE}")
+  paymentInstructions       String?
+  supportContact            String?
+  momoQrKey                 String?
+  allowMultipleBusinesses   Boolean         @default(true)
+  maxBusinessesPerOwner     Int             @default(5)
+  emailNotificationsEnabled Boolean         @default(false)
+  smsNotificationsEnabled   Boolean         @default(false)
+  createdById               String?
+  updatedById               String?
+  createdAt                 DateTime        @default(now())
+  updatedAt                 DateTime        @updatedAt
+  createdBy                 User?           @relation("SettingsCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy                 User?           @relation("SettingsUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+model Notification {
+  id         String                 @id @default(cuid())
+  userId     String
+  businessId String?
+  type       NotificationType
+  title      String
+  message    String
+  data       Json?
+  readAt     DateTime?
+  createdAt  DateTime               @default(now())
+  user       User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business   Business?              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  deliveries NotificationDelivery[]
+
+  @@index([userId, readAt, createdAt])
+  @@index([businessId, createdAt])
+}
+
+model NotificationDelivery {
+  id             String          @id @default(cuid())
+  notificationId String
+  channel        DeliveryChannel
+  status         DeliveryStatus  @default(PENDING)
+  attempts       Int             @default(0)
+  scheduledAt    DateTime
+  sentAt         DateTime?
+  error          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  notification   Notification    @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([status, scheduledAt])
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  businessId String?
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+  business   Business? @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  actor      User?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
+}
+
+model SupportCase {
+  id           String            @id @default(cuid())
+  businessId   String
+  reporterId   String
+  assignedToId String?
+  subject      String
+  message      String
+  status       SupportCaseStatus @default(OPEN)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  business     Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  reporter     User              @relation("SupportReporter", fields: [reporterId], references: [id])
+  assignedTo   AdminMembership?  @relation(fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, status, createdAt])
+}
+
+model BusinessAdminNote {
+  id         String   @id @default(cuid())
+  businessId String
+  authorId   String
+  body       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  author     User     @relation("AdminNoteAuthor", fields: [authorId], references: [id])
+
+  @@index([businessId, createdAt])
+}
+
+model RateLimitBucket {
+  key       String   @id
+  action    String
+  count     Int      @default(1)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([action, expiresAt])
+  @@index([expiresAt])
+}

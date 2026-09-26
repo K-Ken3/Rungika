@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rungika
+      POSTGRES_PASSWORD: rungika
+      POSTGRES_DB: rungika
+    ports:
+      - "5432:5432"
+    volumes:
+      - rungika-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rungika -d rungika"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  rungika-postgres:
