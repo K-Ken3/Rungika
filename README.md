@@ -239,8 +239,17 @@ message still causes it to be filtered.
 
 Subscription transitions and payment reminders run from
 `GET /api/cron/billing`, which requires `Authorization: Bearer $CRON_SECRET`.
-`vercel.json` schedules it hourly. On other platforms, call the same endpoint
-from your scheduler of choice.
+`vercel.json` schedules it once a day at 07:00 UTC, which is 09:00 East Africa
+Time. Vercel's Hobby plan rejects any schedule that runs more than once per day,
+so this cannot be made hourly without moving to Pro. On other platforms, call the
+same endpoint from your scheduler of choice.
+
+A daily schedule is sufficient, and the reason matters: access is not decided by
+this job. `hasPaidOperationalAccess` compares `trialEndsAt` with the current time
+on every request, so a workspace loses access the moment its trial or grace
+period ends, whether or not the cron has run. The job only writes stored status
+fields and creates reminder notifications, so running it less often makes those
+lag by up to a day without ever granting access that should have been denied.
 
 ## Remote database latency
 
