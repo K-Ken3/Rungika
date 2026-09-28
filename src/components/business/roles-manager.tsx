@@ -1,9 +1,10 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState } from "react";
 import {
   createRoleAction,
-  initialBusinessActionState,
   updateRoleAction,
 } from "@/actions/business";
 import {
@@ -40,9 +41,7 @@ export function RolesManager({
   catalog: CatalogItem[];
 }) {
   const [state, action, pending] = useActionState(
-    createRoleAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    createRoleAction.bind(null, businessId), initialBusinessActionState);
 
   return (
     <div className="space-y-8">
@@ -127,9 +126,7 @@ function RoleRow({
   catalog: CatalogItem[];
 }) {
   const [state, action, pending] = useActionState(
-    updateRoleAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    updateRoleAction.bind(null, businessId), initialBusinessActionState);
 
   if (role.isSystem) {
     return (

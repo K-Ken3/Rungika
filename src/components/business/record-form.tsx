@@ -1,10 +1,11 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import Link from "next/link";
 import { useActionState } from "react";
 import {
   createRecordAction,
-  initialBusinessActionState,
   updateRecordAction,
 } from "@/actions/business";
 import {

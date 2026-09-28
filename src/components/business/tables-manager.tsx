@@ -1,5 +1,7 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import Link from "next/link";
 import { useActionState } from "react";
 import {
@@ -7,7 +9,6 @@ import {
   createTableAction,
   deleteFieldAction,
   deleteTableAction,
-  initialBusinessActionState,
   updateFieldAction,
 } from "@/actions/business";
 import {

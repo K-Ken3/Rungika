@@ -1,8 +1,9 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState } from "react";
 import {
-  initialBusinessActionState,
   markNotificationAction,
 } from "@/actions/business";
 import { ActionMessage, ActionSubmitButton } from "@/components/business/form-controls";
@@ -23,9 +24,7 @@ export function NotificationList({
   notifications: Notification[];
 }) {
   const [state, action, pending] = useActionState(
-    markNotificationAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    markNotificationAction.bind(null, businessId), initialBusinessActionState);
   const unread = notifications.filter((notification) => !notification.readAt).length;
   return (
     <div className="space-y-5">
@@ -64,9 +63,7 @@ function NotificationRow({
   notification: Notification;
 }) {
   const [state, action, pending] = useActionState(
-    markNotificationAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    markNotificationAction.bind(null, businessId), initialBusinessActionState);
   return (
     <article className={`rounded-xl border p-4 ${notification.readAt ? "border-emerald-100 bg-emerald-50" : "border-emerald-600 bg-emerald-50"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">

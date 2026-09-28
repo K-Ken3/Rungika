@@ -1,8 +1,9 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState } from "react";
 import {
-  initialBusinessActionState,
   invitePersonAction,
   updatePersonAction,
 } from "@/actions/business";
@@ -54,9 +55,7 @@ export function PeopleManager({
   canEdit: boolean;
 }) {
   const [inviteState, inviteAction, invitePending] = useActionState(
-    invitePersonAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    invitePersonAction.bind(null, businessId), initialBusinessActionState);
 
   return (
     <div className="space-y-8">
@@ -168,9 +167,7 @@ function PersonRow({
   canEdit: boolean;
 }) {
   const [state, action, pending] = useActionState(
-    updatePersonAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    updatePersonAction.bind(null, businessId), initialBusinessActionState);
 
   return (
     <article className="rounded-xl border border-emerald-100 bg-white p-5">

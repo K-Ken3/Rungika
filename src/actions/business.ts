@@ -42,8 +42,6 @@ export type BusinessActionState = {
   fieldErrors?: Record<string, string[] | undefined>;
 };
 
-export const initialBusinessActionState: BusinessActionState = { status: "idle" };
-
 const businessIdSchema = z.string().min(10).max(64).regex(/^[a-zA-Z0-9_-]+$/);
 const recordIdSchema = z.string().min(10).max(64).regex(/^[a-zA-Z0-9_-]+$/);
 const optionalText = z.preprocess(

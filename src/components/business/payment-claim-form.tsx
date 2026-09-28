@@ -1,8 +1,9 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState } from "react";
 import {
-  initialBusinessActionState,
   submitPaymentClaimAction,
 } from "@/actions/business";
 import {
@@ -34,9 +35,7 @@ export function PaymentClaimForm({
   currencyMismatch: string | null;
 }) {
   const [state, action, pending] = useActionState(
-    submitPaymentClaimAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    submitPaymentClaimAction.bind(null, businessId), initialBusinessActionState);
   const defaultSentAt = new Date().toISOString().slice(0, 16);
 
   return (

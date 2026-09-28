@@ -1,9 +1,10 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState, useState } from "react";
 import {
   createBusinessAction,
-  initialBusinessActionState,
 } from "@/actions/business";
 import {
   ActionMessage,
@@ -21,9 +22,7 @@ import {
 
 export function BusinessOnboardingForm() {
   const [state, action, pending] = useActionState(
-    createBusinessAction,
-    initialBusinessActionState,
-  );
+    createBusinessAction, initialBusinessActionState);
   const [country, setCountry] = useState("RW");
   const [timezone, setTimezone] = useState("Africa/Kigali");
   const error = (name: string) => state.fieldErrors?.[name]?.[0];

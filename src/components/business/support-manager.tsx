@@ -1,9 +1,10 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState } from "react";
 import {
   createSupportCaseAction,
-  initialBusinessActionState,
   updateSupportCaseAction,
 } from "@/actions/business";
 import {
@@ -34,9 +35,7 @@ export function SupportManager({
   contact: string | null;
 }) {
   const [state, action, pending] = useActionState(
-    createSupportCaseAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    createSupportCaseAction.bind(null, businessId), initialBusinessActionState);
   return (
     <div className="space-y-8">
       <section className="rounded-xl border border-emerald-100 bg-white p-5">
@@ -75,9 +74,7 @@ function SupportCaseRow({
   supportCase: SupportCase;
 }) {
   const [state, action, pending] = useActionState(
-    updateSupportCaseAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    updateSupportCaseAction.bind(null, businessId), initialBusinessActionState);
   return (
     <article className="rounded-xl border border-emerald-100 bg-white p-5">
       <div className="flex flex-wrap justify-between gap-3">

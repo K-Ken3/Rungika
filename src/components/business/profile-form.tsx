@@ -1,8 +1,9 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState } from "react";
 import {
-  initialBusinessActionState,
   updateBusinessProfileAction,
 } from "@/actions/business";
 import {
@@ -36,9 +37,7 @@ export function BusinessProfileForm({
   };
 }) {
   const [state, action, pending] = useActionState(
-    updateBusinessProfileAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    updateBusinessProfileAction.bind(null, businessId), initialBusinessActionState);
   const error = (name: string) => state.fieldErrors?.[name]?.[0];
 
   return (

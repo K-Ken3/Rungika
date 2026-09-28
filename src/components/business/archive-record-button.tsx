@@ -1,9 +1,10 @@
 "use client";
 
+import { initialBusinessActionState } from "@/lib/actions/business-state";
+
 import { useActionState } from "react";
 import {
   archiveRecordAction,
-  initialBusinessActionState,
 } from "@/actions/business";
 import { ActionSubmitButton, ActionMessage } from "@/components/business/form-controls";
 
@@ -17,9 +18,7 @@ export function ArchiveRecordButton({
   recordId: string;
 }) {
   const [state, action, pending] = useActionState(
-    archiveRecordAction.bind(null, businessId),
-    initialBusinessActionState,
-  );
+    archiveRecordAction.bind(null, businessId), initialBusinessActionState);
   return (
     <div className="space-y-2">
       <form action={action} aria-busy={pending}>
