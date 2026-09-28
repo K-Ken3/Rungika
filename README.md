@@ -390,14 +390,24 @@ npm run build
 
 ## Deployment notes
 
+- Keep the build command as `npm run build`. The `prebuild` script runs
+  `prisma generate` first, which is required on any host that caches
+  `node_modules` between builds. Without it, Prisma Client is not generated and
+  the build fails while collecting page data, because a route imports it at
+  module scope. `prisma generate` does not need `DATABASE_URL`, so the build does
+  not depend on secrets being present.
 - Apply migrations during deployment with `npm run db:deploy` before serving
   traffic, then run `npm run db:seed` once to ensure the permission catalog and
   platform settings exist.
 - Set every variable from the table above in the hosting environment. Do not
   commit `.env`.
+- Set the function region to match the database. A distant region adds a network
+  round trip to every query, which is enough to push multi-step transactions
+  past their timeouts.
 - Configure the cron schedule and `CRON_SECRET`.
-- Mount persistent storage for `PRIVATE_UPLOAD_DIR`, or switch the storage
-  module to object storage behind the same interface.
+- Supabase Storage needs no persistent disk. Set `SUPABASE_STORAGE_URL` and
+  `SUPABASE_SERVICE_ROLE_KEY` and leave `PRIVATE_UPLOAD_DIR` unset, otherwise
+  uploads land on an ephemeral serverless filesystem and disappear on redeploy.
 - `next build` prints a non-fatal "Dynamic filesystem access causes tracing of the
   whole project" warning from `src/lib/storage/local-private-upload.ts`. It
   appears because the local proof directory is resolved at runtime from
