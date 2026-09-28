@@ -80,30 +80,41 @@ async function ensurePlatformSettings(): Promise<void> {
   });
 }
 
+async function createPasswordHash(password: string): Promise<string> {
+  if (new TextEncoder().encode(password).byteLength > 72 || password.length < 12) {
+    throw new Error("SUPER_ADMIN_PASSWORD must be at least 12 characters");
+  }
+  return bcrypt.hash(password, 12);
+}
+
 async function ensureSuperAdmin(): Promise<void> {
   const email = envValue("SUPER_ADMIN_EMAIL");
   const password = envValue("SUPER_ADMIN_PASSWORD");
   const name = envValue("SUPER_ADMIN_NAME") ?? "Platform Owner";
 
-  if (!email || !password) {
+  if (!email) {
     return;
   }
 
   const normalizedEmail = email.toLowerCase();
-  if (new TextEncoder().encode(password).byteLength > 72 || password.length < 12) {
-    throw new Error("SUPER_ADMIN_PASSWORD must be at least 12 characters");
-  }
 
   const existingUser = await prisma.user.findUnique({
     where: { email: normalizedEmail },
     select: { id: true, emailVerifiedAt: true },
   });
+
+  if (!existingUser && !password) {
+    process.stdout.write(
+      `Super Admin ${normalizedEmail} does not exist. Set SUPER_ADMIN_PASSWORD to create the account.\n`,
+    );
+    return;
+  }
+
   const user = existingUser
     ? await prisma.user.update({
         where: { id: existingUser.id },
         data: {
           name,
-          passwordHash: await bcrypt.hash(password, 12),
           status: "ACTIVE",
           emailVerifiedAt: existingUser.emailVerifiedAt ?? new Date(),
         },
@@ -112,10 +123,16 @@ async function ensureSuperAdmin(): Promise<void> {
         data: {
           name,
           email: normalizedEmail,
-          passwordHash: await bcrypt.hash(password, 12),
+          passwordHash: await createPasswordHash(password as string),
           emailVerifiedAt: new Date(),
         },
       });
+
+  if (existingUser) {
+    process.stdout.write(
+      `Super Admin ${normalizedEmail} already exists. Existing password preserved.\n`,
+    );
+  }
 
   await prisma.adminMembership.upsert({
     where: { userId: user.id },
@@ -132,9 +149,9 @@ async function main(): Promise<void> {
   const permissionCount = await prisma.permission.count();
   process.stdout.write(`Permissions synchronized: ${permissionCount}\n`);
 
-  if (!envValue("SUPER_ADMIN_EMAIL") || !envValue("SUPER_ADMIN_PASSWORD")) {
+  if (!envValue("SUPER_ADMIN_EMAIL")) {
     process.stdout.write(
-      "Super Admin not created. Set SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD (minimum 12 characters) and rerun this seed.\n",
+      "Super Admin skipped. Set SUPER_ADMIN_EMAIL to create or repair the admin account.\n",
     );
   }
 }
