@@ -16,7 +16,9 @@ import {
   getJsonRecordValue,
   safeDownloadFilename,
   serializeCsv,
+  XLSX_CONTENT_TYPE,
 } from "@/lib/security/csv";
+import { buildXlsxBuffer } from "@/lib/spreadsheet/xlsx";
 import { consumeRateLimit } from "@/lib/security/rate-limit";
 import { RATE_LIMIT_ACTIONS } from "@/lib/security/rate-limit-rules";
 
@@ -25,12 +27,30 @@ export const dynamic = "force-dynamic";
 export const MAX_EXPORT_PAGE_SIZE = 500;
 export const MAX_EXPORT_ROWS = MAX_EXPORT_PAGE_SIZE;
 export const MAX_EXPORT_FIELDS = 200;
+export const MAX_EXPORT_ALL_ROWS = 50_000;
 const MAX_EXPORT_PAGE = 100_000;
+const EXPORT_CHUNK_SIZE = 1_000;
 
 type ExportStatus = "ACTIVE" | "ARCHIVED" | "all";
 
 function isValidTableId(value: string): boolean {
   return /^[A-Za-z0-9_-]{1,128}$/u.test(value);
+}
+
+type ExportFormat = "csv" | "xlsx";
+
+function parseFormat(value: string | null): ExportFormat | null {
+  if (value === null || value === "csv") {
+    return "csv";
+  }
+  return value === "xlsx" ? "xlsx" : null;
+}
+
+function parseScope(value: string | null): "page" | "all" | null {
+  if (value === null || value === "page") {
+    return "page";
+  }
+  return value === "all" ? "all" : null;
 }
 
 function parsePage(value: string | null): number | null {
@@ -90,7 +110,9 @@ export async function GET(
   const page = parsePage(searchParams.get("page"));
   const pageSize = parsePageSize(searchParams.get("pageSize"));
   const status = parseStatus(searchParams.get("status"));
-  if (page === null || pageSize === null || status === null) {
+  const format = parseFormat(searchParams.get("format"));
+  const scope = parseScope(searchParams.get("scope"));
+  if (page === null || pageSize === null || status === null || format === null || scope === null) {
     return errorResponse(400, "Invalid export parameters");
   }
 
@@ -174,29 +196,54 @@ export async function GET(
     businessId: table.businessId,
     ...(status === "all" ? {} : { status }),
   };
-  const skip = (page - 1) * pageSize;
+  const recordSelect = {
+    id: true,
+    status: true,
+    data: true,
+    createdAt: true,
+    updatedAt: true,
+    archivedAt: true,
+  } as const;
+  const recordOrderBy = [{ createdAt: "asc" as const }, { id: "asc" as const }];
+  const takeAll = scope === "all";
+  const skip = takeAll ? 0 : (page - 1) * pageSize;
+  const take = takeAll ? Math.min(MAX_EXPORT_ALL_ROWS, EXPORT_CHUNK_SIZE) : pageSize;
   let records;
   let total;
   try {
-    [records, total] = await Promise.all([
+    const [firstChunk, count] = await Promise.all([
       db.customRecord.findMany({
         where: recordWhere,
-        select: {
-          id: true,
-          status: true,
-          data: true,
-          createdAt: true,
-          updatedAt: true,
-          archivedAt: true,
-        },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: recordSelect,
+        orderBy: recordOrderBy,
         skip,
-        take: pageSize,
+        take,
       }),
       db.customRecord.count({ where: recordWhere }),
     ]);
+    records = firstChunk;
+    total = count;
+    if (takeAll && count > firstChunk.length) {
+      for (let offset = firstChunk.length; offset < Math.min(count, MAX_EXPORT_ALL_ROWS); offset += EXPORT_CHUNK_SIZE) {
+        const chunk = await db.customRecord.findMany({
+          where: recordWhere,
+          select: recordSelect,
+          orderBy: recordOrderBy,
+          skip: offset,
+          take: Math.min(EXPORT_CHUNK_SIZE, Math.min(count, MAX_EXPORT_ALL_ROWS) - offset),
+        });
+        if (chunk.length === 0) {
+          break;
+        }
+        records = records.concat(chunk);
+      }
+    }
   } catch {
     return errorResponse(503, "Unable to process request");
+  }
+  const truncated = total > records.length;
+  if (takeAll) {
+    total = records.length;
   }
 
   let exportPermissionKeys: string[] = [];
@@ -232,24 +279,60 @@ export async function GET(
       header: uniqueHeader(field.label || field.key, usedHeaders),
     }));
   const columns = [...metadataColumns, ...fieldColumns];
-  const rows = records.map((record) => {
-    const metadata = [
-      record.id,
-      record.status,
-      record.createdAt,
-      record.updatedAt,
-      record.archivedAt,
-    ];
-    return [
-      ...metadata,
-      ...fieldColumns.map((field) => getJsonRecordValue(record.data, field.key)),
-    ];
-  });
+  if (columns.length > MAX_EXPORT_FIELDS) {
+    return errorResponse(400, "This table has too many fields to export");
+  }
+  const rows = records.map((record) => [
+    record.id,
+    record.status,
+    record.createdAt,
+    record.updatedAt,
+    record.archivedAt,
+    ...fieldColumns.map((field) => getJsonRecordValue(record.data, field.key)),
+  ]);
+
+  if (format === "xlsx") {
+    try {
+      const sheetName = safeDownloadFilename(
+        table.slug || table.name || "table export",
+        "table export",
+      )
+        .replace(/\.[A-Za-z0-9]{1,10}$/u, "")
+        .slice(0, 31);
+      const xlsxBody = await buildXlsxBuffer({
+        sheetName: sheetName.length > 0 ? sheetName : "Export",
+        headers: columns.map((column) => column.header),
+        rows,
+      });
+      const xlsxFilename = safeDownloadFilename(
+        `${table.slug || table.name || "table-export"}.xlsx`,
+        "table-export.xlsx",
+      );
+      return new Response(
+        new Uint8Array(xlsxBody),
+        withSecurityHeaders({
+          headers: {
+            "Content-Type": XLSX_CONTENT_TYPE,
+            "Content-Disposition": contentDispositionAttachment(xlsxFilename),
+            "Content-Length": String(xlsxBody.byteLength),
+            "X-Export-Row-Count": String(rows.length),
+            "X-Export-Total-Count": String(total),
+            "X-Export-Scope": scope,
+            ...(truncated ? { "X-Export-Truncated": "true" } : {}),
+          },
+        }),
+      );
+    } catch {
+      return errorResponse(503, "Unable to process request");
+    }
+  }
+
   const csv = serializeCsv(
     columns.map((column) => column.header),
     rows,
   );
   const body = `\uFEFF${csv}`;
+
   const filename = safeDownloadFilename(
     `${table.slug || table.name || "table-export"}.csv`,
     "table-export.csv",
@@ -261,7 +344,10 @@ export async function GET(
       "Content-Length": String(Buffer.byteLength(body, "utf8")),
       "X-Export-Page": String(page),
       "X-Export-Page-Size": String(pageSize),
+      "X-Export-Row-Count": String(rows.length),
       "X-Export-Total-Count": String(total),
+      "X-Export-Scope": scope,
+      ...(truncated ? { "X-Export-Truncated": "true" } : {}),
     },
   });
   return new Response(body, responseInit);

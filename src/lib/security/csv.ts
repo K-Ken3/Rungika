@@ -1,5 +1,8 @@
 export const CSV_CONTENT_TYPE = "text/csv; charset=utf-8";
 
+export const XLSX_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 function stringifyCsvValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "";
@@ -37,6 +40,44 @@ export function sanitizeCsvHeader(value: unknown): string {
 
 export function sanitizeCsvCell(value: unknown): string {
   return sanitizeCsvHeader(value);
+}
+
+export function isFormulaLikeValue(value: unknown): boolean {
+  if (typeof value === "string") {
+    return /^[\u0000-\u0020]*[=+\-@]/u.test(value) || /^[\t\r\n]/u.test(value);
+  }
+  if (Array.isArray(value)) {
+    return value.some((entry) => isFormulaLikeValue(entry));
+  }
+  return false;
+}
+
+export function sanitizeSpreadsheetValue(value: unknown): unknown {
+  if (typeof value === "string") {
+    return neutralizeCsvFormula(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeSpreadsheetValue(entry));
+  }
+  return value;
+}
+
+export function toSpreadsheetCell(
+  value: unknown,
+): string | number | boolean | Date | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return neutralizeCsvFormula(value);
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  return neutralizeCsvFormula(stringifyCsvValue(value));
 }
 
 export function serializeCsv(headers: readonly unknown[], rows: readonly (readonly unknown[])[]): string {

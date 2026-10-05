@@ -45,7 +45,7 @@ export default async function TablesPage({ params, searchParams }: { params: Pro
   return (
     <div className="space-y-8">
       <header><p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-700">Data workspace</p><h1 className="mt-2 text-3xl font-bold text-emerald-950">Tables & records</h1><p className="mt-2 text-slate-600">Build business-specific tables with typed fields and validated JSON records.</p></header>
-      <TablesManager businessId={businessId} tables={data.tables} selectedTable={data.selectedTable} canCreateTable={data.canCreateTables} canEditFields={data.canManageFields} canDeleteTable={data.canDeleteTables} />
+      <TablesManager businessId={businessId} tables={data.tables} selectedTable={data.selectedTable} canCreateTable={data.canCreateTables} canEditFields={data.canManageFields} canDeleteTable={data.canDeleteTables} canExportRecords={data.canExportRecords} />
       {data.selectedTable ? (
         <section className="space-y-4">
           <div className="flex flex-wrap items-end justify-between gap-4">

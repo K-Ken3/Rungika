@@ -1,9 +1,10 @@
 "use client";
 
 import { initialBusinessActionState } from "@/lib/actions/business-state";
+import { TableExportMenu, TableImportForm } from "@/components/business/table-spreadsheet";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   createFieldAction,
   createTableAction,
@@ -97,6 +98,7 @@ export function TablesManager({
   canCreateTable,
   canEditFields,
   canDeleteTable,
+  canExportRecords,
 }: {
   businessId: string;
   tables: Table[];
@@ -104,6 +106,7 @@ export function TablesManager({
   canCreateTable: boolean;
   canEditFields: boolean;
   canDeleteTable: boolean;
+  canExportRecords: boolean;
 }) {
   const [tableState, tableAction, tablePending] = useActionState(
     createTableAction.bind(null, businessId),
@@ -117,20 +120,44 @@ export function TablesManager({
     deleteTableAction.bind(null, businessId),
     initialBusinessActionState,
   );
+  const [mode, setMode] = useState<"manual" | "import">("manual");
 
   return (
     <div className="space-y-8">
       {canCreateTable ? (
         <section className="rounded-xl border border-emerald-100 bg-white p-5">
-          <h2 className="text-lg font-semibold text-emerald-950">Create a custom table</h2>
-          <form action={tableAction} className="mt-5 grid gap-5 sm:grid-cols-2" aria-busy={tablePending}>
-            <TextField id="table-name" name="name" label="Table name" required error={tableState.fieldErrors?.name?.[0]} />
-            <TextAreaField id="table-description" name="description" label="Description" />
-            <div className="sm:col-span-2">
-              <ActionMessage state={tableState} />
-              <ActionSubmitButton pending={tablePending}>Create table</ActionSubmitButton>
-            </div>
-          </form>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMode(mode === "manual" ? "import" : "manual")}
+              className="rounded-lg border border-emerald-200 px-3 py-2 text-sm text-emerald-900"
+            >
+              {mode === "manual" ? "Import from spreadsheet" : "Create blank table"}
+            </button>
+            <p className="text-xs text-slate-600">
+              Build a table by hand, or import an existing Excel/CSV file.
+            </p>
+          </div>
+          {mode === "import" ? (
+            <>
+              <h2 className="mt-5 text-lg font-semibold text-emerald-950">
+                Import a spreadsheet
+              </h2>
+              <TableImportForm businessId={businessId} />
+            </>
+          ) : (
+            <>
+              <h2 className="mt-5 text-lg font-semibold text-emerald-950">Create a custom table</h2>
+              <form action={tableAction} className="mt-5 grid gap-5 sm:grid-cols-2" aria-busy={tablePending}>
+                <TextField id="table-name" name="name" label="Table name" required error={tableState.fieldErrors?.name?.[0]} />
+                <TextAreaField id="table-description" name="description" label="Description" />
+                <div className="sm:col-span-2">
+                  <ActionMessage state={tableState} />
+                  <ActionSubmitButton pending={tablePending}>Create table</ActionSubmitButton>
+                </div>
+              </form>
+            </>
+          )}
         </section>
       ) : null}
 
@@ -189,12 +216,19 @@ export function TablesManager({
                 Field values are stored as validated JSON data; no dynamic SQL is used.
               </p>
             </div>
-            <Link
-              href={`/business/${businessId}/tables/${selectedTable.id}/new`}
-              className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-emerald-950"
-            >
-              Add record
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <TableExportMenu
+                tableId={selectedTable.id}
+                canExport={canExportRecords}
+                tablePath={`/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(selectedTable.id)}`}
+              />
+              <Link
+                href={`/business/${businessId}/tables/${selectedTable.id}/new`}
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-emerald-950"
+              >
+                Add record
+              </Link>
+            </div>
           </div>
           {canEditFields ? (
             <form action={fieldAction} className="space-y-5 rounded-xl border border-emerald-100 bg-white p-5" aria-busy={fieldPending}>
