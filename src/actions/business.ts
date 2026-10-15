@@ -684,7 +684,7 @@ export async function createRecordAction(
   try {
     await createCustomRecord({ userId: user.id, businessId, tableId: parsed.data.tableId, formData });
     revalidateBusiness(businessId);
-    redirect(`/business/${encodeURIComponent(businessId)}/tables/${encodeURIComponent(parsed.data.tableId)}?saved=record`);
+    redirect(`/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(parsed.data.tableId)}&saved=record`);
   } catch (error) {
     return actionError(error);
   }
@@ -708,7 +708,7 @@ export async function updateRecordAction(
   try {
     await updateCustomRecord({ userId: user.id, businessId, tableId: parsed.data.tableId, recordId: parsed.data.recordId, formData });
     revalidateBusiness(businessId);
-    redirect(`/business/${encodeURIComponent(businessId)}/tables/${encodeURIComponent(parsed.data.tableId)}?saved=record`);
+    redirect(`/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(parsed.data.tableId)}&saved=record`);
   } catch (error) {
     return actionError(error);
   }
@@ -732,7 +732,7 @@ export async function archiveRecordAction(
   try {
     await archiveCustomRecord({ userId: user.id, businessId, tableId: parsed.data.tableId, recordId: parsed.data.recordId });
     revalidateBusiness(businessId);
-    redirect(`/business/${encodeURIComponent(businessId)}/tables/${encodeURIComponent(parsed.data.tableId)}?saved=archived`);
+    redirect(`/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(parsed.data.tableId)}&saved=archived`);
   } catch (error) {
     return actionError(error);
   }

@@ -58,7 +58,7 @@ export function RecordForm({
           <h1 className="text-2xl font-semibold text-emerald-950">{recordId ? "Edit record" : "New record"}</h1>
           <p className="mt-1 text-sm text-slate-600">{tableName}</p>
         </div>
-        <Link href={`/business/${businessId}/tables/${tableId}`} className="text-sm text-emerald-700">
+        <Link href={`/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(tableId)}`} className="text-sm text-emerald-700">
           Back to records
         </Link>
       </div>
@@ -84,6 +84,15 @@ export function RecordForm({
       </ActionSubmitButton>
     </form>
   );
+}
+
+function toLocalDateTimeInput(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function RecordInput({
@@ -177,7 +186,7 @@ function RecordInput({
                 : "text";
   const inputValue =
     field.type === "DATETIME" && stringValue
-      ? new Date(stringValue).toISOString().slice(0, 16)
+      ? toLocalDateTimeInput(stringValue)
       : stringValue;
   return (
     <TextField

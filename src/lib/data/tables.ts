@@ -670,7 +670,18 @@ function formValue(formData: FormData, key: string, type: FieldType) {
     return formData.get(`field:${key}`) === "on";
   }
   const value = formData.get(`field:${key}`);
-  return value === null ? undefined : String(value);
+  if (value === null) {
+    return undefined;
+  }
+  const text = String(value);
+  if (type === "DATETIME") {
+    if (text.trim() === "") {
+      return undefined;
+    }
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? text : parsed.toISOString();
+  }
+  return text;
 }
 
 function buildRecordData(
