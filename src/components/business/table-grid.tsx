@@ -6,7 +6,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { createRecordAction } from "@/actions/business";
 import { ArchiveRecordButton } from "@/components/business/archive-record-button";
 import { initialBusinessActionState } from "@/lib/actions/business-state";
-import { FIELD_TYPE_LABELS, type CustomFieldType } from "@/components/business/rules";
+import { type CustomFieldType } from "@/components/business/rules";
 
 export type GridField = {
   id: string;
@@ -32,19 +32,9 @@ const BORDER = "border border-emerald-100";
 
 const CELL = `${BORDER} px-3 py-2 align-middle whitespace-nowrap text-sm text-slate-700`;
 
-const HEADER_CELL = `${BORDER} bg-emerald-50 px-3 py-2 text-left align-bottom text-sm font-semibold text-emerald-950 whitespace-nowrap`;
+const HEADER_CELL = `${BORDER} bg-emerald-50 px-3 py-2 text-left align-middle text-sm font-semibold text-emerald-950 whitespace-nowrap`;
 
 const GUTTER = `${BORDER} sticky left-0 z-20 w-12 bg-slate-100 px-2 py-2 text-center align-middle text-xs font-medium text-slate-500`;
-
-function columnLetter(index: number): string {
-  let value = index;
-  let label = "";
-  do {
-    label = String.fromCharCode(65 + (value % 26)) + label;
-    value = Math.floor(value / 26) - 1;
-  } while (value >= 0);
-  return label;
-}
 
 function readOptions(options: unknown): string[] {
   return Array.isArray(options)
@@ -103,7 +93,6 @@ export function TableGrid({
   }, [addState.status]);
 
   const dataColumns = fields.length;
-  const statusColumn = columnLetter(dataColumns);
 
   function addRowCell(field: GridField) {
     const options = readOptions(field.options);
@@ -176,42 +165,19 @@ export function TableGrid({
         <table className="w-full border-collapse text-left">
           <thead>
             <tr>
-              <th scope="col" className={`${BORDER} sticky top-0 left-0 z-40 w-12 bg-slate-100 px-2 py-1 text-center text-xs font-normal text-slate-400`}>
+              <th scope="col" className="sticky top-0 left-0 z-40 w-12 border border-emerald-100 bg-emerald-50 px-3 py-2 text-left text-sm font-semibold text-emerald-950">
                 #
               </th>
-              {fields.map((field, index) => (
-                <th
-                  key={`letter-${field.id}`}
-                  scope="col"
-                  className={`${BORDER} sticky top-0 z-20 bg-slate-100 px-3 py-1 text-center text-xs font-normal text-slate-400`}
-                >
-                  {columnLetter(index)}
-                </th>
-              ))}
-              <th scope="col" className={`${BORDER} sticky top-0 z-20 bg-slate-100 px-3 py-1 text-center text-xs font-normal text-slate-400`}>
-                {statusColumn}
-              </th>
-              <th scope="col" className={`${BORDER} sticky top-0 z-20 bg-slate-100 px-3 py-1 text-center text-xs font-normal text-slate-400`}>
-                {columnLetter(dataColumns + 1)}
-              </th>
-            </tr>
-            <tr>
-              <th scope="col" className={`${GUTTER} top-[27px] z-40`}>
-                Row
-              </th>
               {fields.map((field) => (
-                <th key={field.id} scope="col" className={`${HEADER_CELL} sticky top-[27px] z-20`}>
-                  <span className="block">{field.label}</span>
-                  <span className="mt-0.5 block text-xs font-normal text-slate-500">
-                    {FIELD_TYPE_LABELS[field.type]}
-                    {field.required ? " · required" : ""}
-                  </span>
+                <th key={field.id} scope="col" className={`${HEADER_CELL} sticky top-0 z-30`}>
+                  {field.label}
+                  {field.required ? <span className="ml-0.5 text-rose-500">*</span> : null}
                 </th>
               ))}
-              <th scope="col" className={`${HEADER_CELL} sticky top-[27px] z-20`}>
+              <th scope="col" className={`${HEADER_CELL} sticky top-0 z-30`}>
                 Status
               </th>
-              <th scope="col" className={`${HEADER_CELL} sticky top-[27px] z-20`}>
+              <th scope="col" className={`${HEADER_CELL} sticky top-0 z-30`}>
                 Actions
               </th>
             </tr>
