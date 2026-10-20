@@ -28,8 +28,13 @@ export default async function DashboardPage({ params, searchParams }: { params: 
       ) : null}
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-700">Dashboard</p><h1 className="mt-2 text-3xl font-bold text-emerald-950">{dashboard.business.name}</h1><p className="mt-2 text-slate-600">Live workspace data for {dashboard.business.country}.</p></div>
-        <div className="flex flex-wrap gap-3"><Link href={`${base}/tables`} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-emerald-950">Open tables</Link><Link href={`${base}/people`} className="rounded-lg border border-emerald-200 px-4 py-2.5 text-sm text-slate-800">Manage people</Link></div>
+        <div className="flex flex-wrap gap-3"><Link href={`${base}/scan`} className="rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-bold text-emerald-950">Scan handwritten table</Link><Link href={`${base}/tables`} className="rounded-lg border border-emerald-200 px-4 py-2.5 text-sm text-slate-800">Open tables</Link></div>
       </header>
+      <section className="flex flex-wrap gap-3">
+        <Link href={`${base}/tables`} className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm text-slate-800 hover:bg-emerald-50">Create spreadsheet</Link>
+        <Link href={`${base}/scan`} className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm text-slate-800 hover:bg-emerald-50">Scan handwritten table</Link>
+        <Link href={`${base}/exports`} className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm text-slate-800 hover:bg-emerald-50">Export &amp; reports</Link>
+      </section>
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {metrics.map((metric) => (
           <Link key={metric.label} href={metric.href} className="rounded-2xl border border-emerald-100 bg-white p-5 transition hover:border-emerald-600">

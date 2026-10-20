@@ -12,6 +12,11 @@ function statusValue(value: string | string[] | undefined): "ACTIVE" | "ARCHIVED
   return normalized === "ARCHIVED" || normalized === "ALL" ? normalized : "ACTIVE";
 }
 
+function one(query: Record<string, string | string[] | undefined>, key: string, limit = 100) {
+  const raw = Array.isArray(query[key]) ? query[key][0] : query[key];
+  return (raw ?? "").trim().slice(0, limit);
+}
+
 export default async function TablesPage({ params, searchParams }: { params: Promise<{ businessId: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { businessId } = await params;
   const query = await searchParams;
@@ -20,7 +25,16 @@ export default async function TablesPage({ params, searchParams }: { params: Pro
   const search = Array.isArray(query.search) ? query.search[0] : query.search;
   const status = statusValue(query.status);
   const page = pageNumber(query.page);
-  const data = await getTableWorkspace(user.id, businessId, tableId, { search, status, page });
+  const order = one(query, "order", 4) === "asc" ? ("asc" as const) : ("desc" as const);
+  const data = await getTableWorkspace(user.id, businessId, tableId, {
+    search,
+    status,
+    page,
+    sort: one(query, "sort", 64),
+    order,
+    filterKey: one(query, "fkey", 64),
+    filterValue: one(query, "fval", 100),
+  });
 
   return (
     <div className="space-y-8">

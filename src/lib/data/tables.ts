@@ -63,6 +63,10 @@ export interface TableWorkspaceQuery {
   search?: string;
   status?: "ACTIVE" | "ARCHIVED" | "ALL";
   page?: number;
+  sort?: string;
+  order?: "asc" | "desc";
+  filterKey?: string;
+  filterValue?: string;
 }
 
 export interface TableWorkspaceDTO {
@@ -78,6 +82,11 @@ export interface TableWorkspaceDTO {
   query: {
     search: string;
     status: "ACTIVE" | "ARCHIVED" | "ALL";
+    sort: string;
+    order: "asc" | "desc";
+    filterKey: string;
+    filterValue: string;
+    sortLimited: boolean;
   };
   canCreateTables: boolean;
   canDeleteTables: boolean;
@@ -280,6 +289,35 @@ async function allowedFieldKeysFor(
   );
 }
 
+const FIELD_SORT_LIMIT = 5000;
+
+function isEmptySortValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  return Array.isArray(value) && value.length === 0;
+}
+
+function compareSortValues(a: unknown, b: unknown): number {
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  if (typeof a === "boolean" && typeof b === "boolean") return a === b ? 0 : a ? 1 : -1;
+  const left = Array.isArray(a) ? a.join(", ") : String(a ?? "");
+  const right = Array.isArray(b) ? b.join(", ") : String(b ?? "");
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function orderRecordsForField(
+  rows: Array<{ id: string; data: Prisma.JsonValue }>,
+  key: string,
+  order: Prisma.SortOrder,
+): Array<{ id: string; data: Prisma.JsonValue }> {
+  const withValue = rows.filter((row) => !isEmptySortValue(safeRecordData(row.data)[key]));
+  const withoutValue = rows.filter((row) => isEmptySortValue(safeRecordData(row.data)[key]));
+  withValue.sort((left, right) =>
+    compareSortValues(safeRecordData(left.data)[key], safeRecordData(right.data)[key]),
+  );
+  if (order === "desc") withValue.reverse();
+  return [...withValue, ...withoutValue];
+}
+
 export async function getTableWorkspace(
   userId: string,
   businessId: string,
@@ -316,6 +354,7 @@ export async function getTableWorkspace(
   if (selected && status !== "ALL") {
     recordWhere.status = status;
   }
+  const conditions: Prisma.CustomRecordWhereInput[] = [];
   if (selected && search) {
     const searchableFields = selected.fields.filter(
       (field) =>
@@ -325,42 +364,120 @@ export async function getTableWorkspace(
         ),
     );
     if (searchableFields.length > 0) {
-      recordWhere.AND = [
-        {
-          OR: searchableFields.map((field) => ({
-            data: {
-              path: [field.key],
-              string_contains: search,
-              mode: "insensitive",
-            },
-          })),
-        },
-      ];
+      conditions.push({
+        OR: searchableFields.map((field) => ({
+          data: {
+            path: [field.key],
+            string_contains: search,
+            mode: "insensitive",
+          },
+        })),
+      });
     }
   }
-  const [records, totalRecords, canCreateTables, canDeleteTables, canCreateRecords, canEditRecords, canDeleteRecords, canExportRecords, canManageFields] =
-    await Promise.all([
-      selected
-        ? db.customRecord.findMany({
-            where: recordWhere,
-            include: {
-              createdBy: { select: { name: true } },
-              updatedBy: { select: { name: true } },
-            },
-            orderBy: { createdAt: "desc" },
-            skip: (page - 1) * pageSize,
-            take: pageSize,
-          })
-        : Promise.resolve([]),
-      selected ? db.customRecord.count({ where: recordWhere }) : Promise.resolve(0),
-      hasPermissionForUser(userId, businessId, "tables.create"),
-      hasPermissionForUser(userId, businessId, "tables.delete"),
-      hasPermissionForUser(userId, businessId, "records.create"),
-      hasPermissionForUser(userId, businessId, "records.edit"),
-      hasPermissionForUser(userId, businessId, "records.delete"),
-      hasPermissionForUser(userId, businessId, "records.export"),
-      hasPermissionForUser(userId, businessId, "tables.edit"),
-    ]);
+  const filterValue = query.filterValue?.trim().slice(0, 100) ?? "";
+  const filterKey = query.filterKey?.trim().slice(0, 64) ?? "";
+  if (selected && filterKey && filterValue) {
+    const filtered = selected.fields.find(
+      (field) =>
+        field.key === filterKey &&
+        allowedFieldKeys.has(field.key) &&
+        ["SHORT_TEXT", "LONG_TEXT", "EMAIL", "PHONE", "URL", "DATE", "DATETIME", "SELECT"].includes(
+          field.type,
+        ),
+    );
+    if (filtered) {
+      conditions.push({
+        data: {
+          path: [filtered.key],
+          string_contains: filterValue,
+          mode: "insensitive",
+        },
+      });
+    }
+  }
+  if (conditions.length > 0) {
+    recordWhere.AND = conditions;
+  }
+
+  const sortRequested = query.sort?.trim().slice(0, 64) ?? "";
+  const order: Prisma.SortOrder = query.order === "asc" ? "asc" : "desc";
+  const nativeSortable = sortRequested === "updatedAt" || sortRequested === "status";
+  const sortField =
+    selected && sortRequested && !nativeSortable
+      ? selected.fields.find(
+          (field) => field.key === sortRequested && allowedFieldKeys.has(field.key),
+        ) ?? null
+      : null;
+  const orderBy: Prisma.CustomRecordOrderByWithRelationInput =
+    sortRequested === "updatedAt" ? { updatedAt: order }
+    : sortRequested === "status" ? { status: order }
+    : { createdAt: order };
+
+  const recordInclude = {
+    createdBy: { select: { name: true } },
+    updatedBy: { select: { name: true } },
+  } as const;
+  const fetchPage = (by: Prisma.CustomRecordOrderByWithRelationInput) =>
+    db.customRecord.findMany({
+      where: recordWhere,
+      include: recordInclude,
+      orderBy: by,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+
+  let sortLimited = false;
+  const recordQuery = (async (): Promise<RecordWithUsers[]> => {
+    if (!selected) return [];
+    if (!sortField) return fetchPage(orderBy);
+    const candidates = await db.customRecord.findMany({
+      where: recordWhere,
+      select: { id: true, data: true },
+      take: FIELD_SORT_LIMIT + 1,
+    });
+    if (candidates.length > FIELD_SORT_LIMIT) {
+      sortLimited = true;
+      return fetchPage({ createdAt: "desc" });
+    }
+    const ids = orderRecordsForField(candidates, sortField.key, order)
+      .slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize)
+      .map((row) => row.id);
+    if (ids.length === 0) return [];
+    const rows = await db.customRecord.findMany({
+      where: { id: { in: ids }, businessId, tableId: selected.id },
+      include: recordInclude,
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return ids
+      .map((id) => byId.get(id))
+      .filter((row): row is RecordWithUsers => row !== undefined);
+  })();
+
+  const permissionQuery = Promise.all([
+    hasPermissionForUser(userId, businessId, "tables.create"),
+    hasPermissionForUser(userId, businessId, "tables.delete"),
+    hasPermissionForUser(userId, businessId, "records.create"),
+    hasPermissionForUser(userId, businessId, "records.edit"),
+    hasPermissionForUser(userId, businessId, "records.delete"),
+    hasPermissionForUser(userId, businessId, "records.export"),
+    hasPermissionForUser(userId, businessId, "tables.edit"),
+  ]);
+
+  const [records, permissions, totalRecords] = await Promise.all([
+    recordQuery,
+    permissionQuery,
+    selected ? db.customRecord.count({ where: recordWhere }) : Promise.resolve(0),
+  ]);
+  const [
+    canCreateTables,
+    canDeleteTables,
+    canCreateRecords,
+    canEditRecords,
+    canDeleteRecords,
+    canExportRecords,
+    canManageFields,
+  ] = permissions;
   const pageCount = Math.max(1, Math.ceil(totalRecords / pageSize));
   return {
     tables: tables.map(mapTable),
@@ -381,7 +498,7 @@ export async function getTableWorkspace(
       : null,
     records: records.map((record) => mapRecord(record, allowedFieldKeys)),
     pagination: { page, pageSize, total: totalRecords, pageCount },
-    query: { search, status },
+    query: { search, status, sort: sortRequested, order, filterKey, filterValue, sortLimited },
     canCreateTables: !access.business.adminHold && canCreateTables,
     canDeleteTables: !access.business.adminHold && canDeleteTables,
     canCreateRecords: !access.business.adminHold && canCreateRecords,
@@ -472,6 +589,158 @@ export async function deleteCustomTable(input: {
         metadata: { name: table.name },
       },
     });
+  });
+}
+
+export async function updateCustomTable(input: {
+  userId: string;
+  businessId: string;
+  tableId: string;
+  name: string;
+  description?: string;
+}) {
+  await assertOperationalBusinessAccess(input.userId, input.businessId, "tables.edit");
+  const table = await loadTable(input.userId, input.businessId, input.tableId);
+  const name = input.name.trim();
+  if (name.length < 2 || name.length > 100) {
+    throw new BusinessValidationError("Table name must contain 2 to 100 characters.");
+  }
+  const description = input.description?.trim() || null;
+  if (name === table.name && description === table.description) {
+    return table;
+  }
+  return db.$transaction(async (tx) => {
+    let slug = table.slug;
+    if (name === table.name) {
+      await tx.customTable.update({ where: { id: table.id }, data: { description } });
+    } else {
+      const baseSlug = slugify(name);
+      if (!baseSlug) {
+        throw new BusinessValidationError("Table name must include letters or numbers.");
+      }
+      slug = baseSlug;
+      for (
+        let suffix = 2;
+        await tx.customTable.findFirst({
+          where: { businessId: input.businessId, slug, NOT: { id: table.id } },
+        });
+        suffix += 1
+      ) {
+        slug = `${baseSlug}_${suffix}`;
+      }
+      await tx.customTable.update({ where: { id: table.id }, data: { name, slug, description } });
+    }
+    await tx.auditLog.create({
+      data: {
+        businessId: input.businessId,
+        actorId: input.userId,
+        action: "TABLE.UPDATED",
+        entityType: "CustomTable",
+        entityId: table.id,
+        metadata: { name, description },
+      },
+    });
+    return { ...table, name, slug, description };
+  });
+}
+
+const DUPLICATE_RECORD_LIMIT = 10000;
+
+export async function duplicateCustomTable(input: {
+  userId: string;
+  businessId: string;
+  tableId: string;
+  includeRecords?: boolean;
+}) {
+  await assertOperationalBusinessAccess(input.userId, input.businessId, "tables.create");
+  const table = await loadTable(input.userId, input.businessId, input.tableId);
+  const allowedFieldKeys = await allowedFieldKeysFor(input.userId, input.businessId, table);
+  const fieldsToCopy = table.fields.filter((field) => allowedFieldKeys.has(field.key));
+  if (fieldsToCopy.length === 0) {
+    throw new BusinessValidationError("There are no columns you can duplicate.");
+  }
+  const includeRecords = input.includeRecords !== false;
+  const sourceRecords = includeRecords
+    ? await db.customRecord.findMany({
+        where: { tableId: table.id, businessId: input.businessId },
+        select: { data: true, status: true, createdById: true },
+        take: DUPLICATE_RECORD_LIMIT + 1,
+      })
+    : [];
+  if (sourceRecords.length > DUPLICATE_RECORD_LIMIT) {
+    throw new BusinessConflictError(
+      `This table has more than ${DUPLICATE_RECORD_LIMIT} records. Clear records or duplicate it without them.`,
+    );
+  }
+
+  const baseName = `${table.name} copy`.slice(0, 100);
+  const baseSlug = slugify(baseName) || `table_copy`;
+  return db.$transaction(async (tx) => {
+    let slug = baseSlug;
+    for (
+      let suffix = 2;
+      await tx.customTable.findFirst({ where: { businessId: input.businessId, slug } });
+      suffix += 1
+    ) {
+      slug = `${baseSlug}_${suffix}`;
+    }
+    const copy = await tx.customTable.create({
+      data: {
+        businessId: input.businessId,
+        name: baseName,
+        slug,
+        description: table.description,
+        createdById: input.userId,
+      },
+    });
+    let position = 0;
+    for (const field of fieldsToCopy) {
+      position += 1;
+      const duplicatedField = await tx.customField.create({
+        data: {
+          tableId: copy.id,
+          key: field.key,
+          label: field.label,
+          type: field.type,
+          required: field.required,
+          position,
+          defaultValue: field.defaultValue ?? Prisma.DbNull,
+          options: field.options ?? Prisma.DbNull,
+          validation: field.validation ?? Prisma.DbNull,
+        },
+      });
+      await syncFieldPermissions(
+        tx,
+        duplicatedField.id,
+        normalizeRestrictedPermissionKeys(fieldPermissionKeys(field)),
+      );
+    }
+    for (const record of sourceRecords) {
+      await tx.customRecord.create({
+        data: {
+          businessId: input.businessId,
+          tableId: copy.id,
+          data: restrictRecordData(safeRecordData(record.data), allowedFieldKeys) as Prisma.InputJsonObject,
+          status: record.status,
+          createdById: record.createdById,
+        },
+      });
+    }
+    await tx.auditLog.create({
+      data: {
+        businessId: input.businessId,
+        actorId: input.userId,
+        action: "TABLE.DUPLICATED",
+        entityType: "CustomTable",
+        entityId: copy.id,
+        metadata: {
+          sourceTableId: table.id,
+          fieldCount: fieldsToCopy.length,
+          recordCount: sourceRecords.length,
+        },
+      },
+    });
+    return copy;
   });
 }
 
@@ -859,6 +1128,80 @@ export async function updateCustomRecord(input: {
         entityType: "CustomRecord",
         entityId: record.id,
         metadata: { tableId: input.tableId },
+      },
+    });
+    return record;
+  });
+}
+
+export async function updateCustomRecordCell(input: {
+  userId: string;
+  businessId: string;
+  tableId: string;
+  recordId: string;
+  key: string;
+  formData: FormData;
+}) {
+  await assertOperationalBusinessAccess(input.userId, input.businessId, "records.edit");
+  const table = await loadTable(input.userId, input.businessId, input.tableId);
+  const field = table.fields.find((candidate) => candidate.key === input.key);
+  if (!field) {
+    throw new BusinessValidationError("That column does not exist on this table.");
+  }
+  const allowedFieldKeys = await allowedFieldKeysFor(input.userId, input.businessId, table);
+  if (!allowedFieldKeys.has(field.key)) {
+    throw new BusinessValidationError(`You do not have permission to edit ${field.label}.`);
+  }
+  const current = await db.customRecord.findFirst({
+    where: {
+      id: input.recordId,
+      businessId: input.businessId,
+      tableId: input.tableId,
+      business: { memberships: { some: { userId: input.userId, status: "ACTIVE" } } },
+    },
+    select: { id: true, data: true },
+  });
+  if (!current) {
+    throw new BusinessValidationError("The record does not exist.");
+  }
+  const result = validateCustomFieldValue(
+    {
+      id: field.id,
+      key: field.key,
+      label: field.label,
+      type: field.type,
+      required: field.required,
+      defaultValue: field.defaultValue,
+      options: field.options,
+      validation: field.validation,
+    },
+    formValue(input.formData, field.key, field.type),
+  );
+  if (!result.valid) {
+    throw new BusinessValidationError(result.error ?? `${field.label} is invalid.`);
+  }
+  const existingData = safeRecordData(current.data);
+  const data: Record<string, Prisma.InputJsonValue> = {
+    ...(existingData as Record<string, Prisma.InputJsonValue>),
+  };
+  if (result.value === undefined) {
+    delete data[field.key];
+  } else {
+    data[field.key] = result.value;
+  }
+  return db.$transaction(async (tx) => {
+    const record = await tx.customRecord.update({
+      where: { id: current.id },
+      data: { data: data as Prisma.InputJsonObject, updatedById: input.userId },
+    });
+    await tx.auditLog.create({
+      data: {
+        businessId: input.businessId,
+        actorId: input.userId,
+        action: "RECORD.UPDATED",
+        entityType: "CustomRecord",
+        entityId: record.id,
+        metadata: { tableId: input.tableId, column: field.key, source: "grid" },
       },
     });
     return record;

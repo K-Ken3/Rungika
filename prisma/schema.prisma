@@ -147,6 +147,14 @@ enum SupportCaseStatus {
   CLOSED
 }
 
+enum ScanJobStatus {
+  PENDING
+  PROCESSING
+  REVIEW
+  IMPORTED
+  FAILED
+}
+
 model User {
   id                      String                      @id @default(cuid())
   name                    String
@@ -178,6 +186,8 @@ model User {
   notifications           Notification[]
   supportCases            SupportCase[]               @relation("SupportReporter")
   businessNotesWritten    BusinessAdminNote[]         @relation("AdminNoteAuthor")
+  scanJobsCreated         ScanJob[]                   @relation("ScanJobCreator")
+  importJobsCreated       ImportJob[]                 @relation("ImportJobCreator")
   adminMembership         AdminMembership?
 }
 
@@ -270,6 +280,8 @@ model Business {
   supportCases  SupportCase[]
   adminNotes    BusinessAdminNote[]
   CustomRecord  CustomRecord[]
+  scanJobs      ScanJob[]
+  importJobs    ImportJob[]
 
   @@index([status, createdAt])
   @@index([name])
@@ -381,6 +393,7 @@ model CustomTable {
   createdBy   User           @relation("TableCreator", fields: [createdById], references: [id])
   fields      CustomField[]
   records     CustomRecord[]
+  importJobs  ImportJob[]
 
   @@unique([businessId, slug])
   @@index([businessId, updatedAt])
@@ -722,4 +735,48 @@ model RateLimitBucket {
 
   @@index([action, expiresAt])
   @@index([expiresAt])
+}
+
+model ScanJob {
+  id              String        @id @default(cuid())
+  businessId      String
+  createdById     String
+  status          ScanJobStatus @default(PENDING)
+  provider        String?
+  sourceKey       String?
+  sourceName      String?
+  sourceMime      String?
+  hint            String?
+  result          Json?
+  warnings        Json?
+  error           String?
+  importedTableId String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  business        Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy       User          @relation("ScanJobCreator", fields: [createdById], references: [id])
+  imports         ImportJob[]
+
+  @@index([businessId, createdAt])
+  @@index([businessId, status, createdAt])
+}
+
+model ImportJob {
+  id           String       @id @default(cuid())
+  businessId   String
+  createdById  String
+  scanJobId    String?
+  tableId      String?
+  mode         String
+  mapping      Json?
+  createdCount Int          @default(0)
+  skippedCount Int          @default(0)
+  status       String       @default("COMPLETED")
+  createdAt    DateTime     @default(now())
+  business     Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ImportJobCreator", fields: [createdById], references: [id])
+  scanJob      ScanJob?     @relation(fields: [scanJobId], references: [id], onDelete: SetNull)
+  table        CustomTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
 }

@@ -8,6 +8,7 @@ import type { BusinessAccessDTO } from "@/lib/data/business";
 const navigation = [
   { href: "", label: "Dashboard" },
   { href: "/tables", label: "Tables & records" },
+  { href: "/scan", label: "Scan to table" },
   { href: "/people", label: "People" },
   { href: "/roles", label: "Roles" },
   { href: "/units", label: "Units" },

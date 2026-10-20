@@ -88,6 +88,12 @@ Open http://localhost:3000.
 | `SUPER_ADMIN_EMAIL` | seed only | Email for the seeded Super Admin |
 | `SUPER_ADMIN_NAME` | seed only | Display name for the seeded Super Admin |
 | `SUPER_ADMIN_PASSWORD` | seed only | Password for the seeded Super Admin |
+| `OCR_PROVIDER` | optional | `gemini`, `openai`, or `none`. Defaults to the first provider with a key |
+| `GEMINI_API_KEY` | optional | Google AI Studio key used for Scan to Table. `GOOGLE_API_KEY` and `GOOGLE_GENERATIVE_AI_API_KEY` are accepted aliases |
+| `OCR_GEMINI_MODEL` | optional | Gemini model id, defaults to `gemini-2.0-flash` |
+| `OPENAI_API_KEY` | optional | OpenAI key used for Scan to Table when no Gemini key is set |
+| `OCR_OPENAI_MODEL` | optional | OpenAI vision model id, defaults to `gpt-4o-mini` |
+| `OCR_TIMEOUT_MS` | optional | OCR request timeout in milliseconds, defaults to `45000` |
 
 All transactional email goes through one sender in `src/lib/email/send.ts`, which
 speaks Resend, a JSON webhook, or SMTP. To use Gmail, create an App password in
@@ -105,6 +111,46 @@ SMTP_PASSWORD="your 16 character app password"
 
 Gmail App passwords are credentials. Never commit them, never paste them into
 tracked files, and revoke and replace one that has been shared anywhere.
+
+### Scan to table (OCR)
+
+Scan to Table accepts a photo, upload, or PDF of a handwritten or printed table,
+extracts the grid with a vision model, and imports it as a business table. The
+provider is selected in `src/lib/ocr/index.ts`:
+
+1. `OCR_PROVIDER` when set to `gemini`, `openai`, or `none`.
+2. Otherwise the first provider that has a key, preferring Gemini.
+
+Without a key the feature still loads and shows a "not configured" notice on
+`/business/[businessId]/scan`; the capture, review, and import steps are never
+faked with sample data.
+
+```bash
+OCR_PROVIDER="gemini"
+GEMINI_API_KEY="your key from https://aistudio.google.com/apikey"
+OCR_GEMINI_MODEL="gemini-2.0-flash"
+```
+
+Or with OpenAI:
+
+```bash
+OCR_PROVIDER="openai"
+OPENAI_API_KEY="sk-..."
+OCR_OPENAI_MODEL="gpt-4o-mini"
+```
+
+Operational limits:
+
+- Uploads are capped at 4 MB and `image/png`, `image/jpeg`, `image/webp`, or
+  `application/pdf`. Images are downscaled to at most 1700 px on the longest
+  edge before submission.
+- Extracted tables are capped at 60 columns and 2000 rows.
+- OCR failures are stored on the scan job with a `FAILED` status and a message
+  the user can retry from; nothing is written to business tables until the user
+  confirms the review grid.
+- The scan routes are long-running server-rendered pages, so they are declared
+  with `maxDuration = 60`. Raise the plan's function duration limit if OCR
+  consistently runs longer.
 
 ### TLS interception
 

@@ -48,7 +48,7 @@ function inferOptions(values: SpreadsheetCell[]): string[] | undefined {
   return [...seen];
 }
 
-function coerceImportValue(fieldType: FieldType, value: SpreadsheetCell): unknown {
+export function coerceImportValue(fieldType: FieldType, value: SpreadsheetCell): unknown {
   if (fieldType === FieldType.MULTI_SELECT) {
     if (value === null || value === "") {
       return [];

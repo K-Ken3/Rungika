@@ -11,7 +11,9 @@ import {
   createTableAction,
   deleteFieldAction,
   deleteTableAction,
+  duplicateTableAction,
   updateFieldAction,
+  updateTableAction,
 } from "@/actions/business";
 import {
   ActionMessage,
@@ -61,7 +63,17 @@ type RecordItem = {
   archivedAt: string | null;
 };
 
-type Panel = "create" | "import" | "fields" | null;
+type Panel = "create" | "import" | "fields" | "table" | null;
+
+type WorkspaceQuery = {
+  search: string;
+  status: "ACTIVE" | "ARCHIVED" | "ALL";
+  sort: string;
+  order: "asc" | "desc";
+  filterKey: string;
+  filterValue: string;
+  sortLimited: boolean;
+};
 
 function PermissionRestrictionOptions({
   selected,
@@ -153,7 +165,7 @@ export function TablesManager({
   selectedTable: (Table & { fields: Field[] }) | null;
   records: RecordItem[];
   pagination: { page: number; pageSize: number; total: number; pageCount: number };
-  query: { search: string; status: "ACTIVE" | "ARCHIVED" | "ALL" };
+  query: WorkspaceQuery;
   canCreateTable: boolean;
   canEditFields: boolean;
   canDeleteTable: boolean;
@@ -175,23 +187,64 @@ export function TablesManager({
     initialBusinessActionState,
   );
   const [panel, setPanel] = useState<Panel>(null);
+  const [renameState, renameAction, renamePending] = useActionState(
+    updateTableAction.bind(null, businessId),
+    initialBusinessActionState,
+  );
+  const [duplicateState, duplicateAction, duplicatePending] = useActionState(
+    duplicateTableAction.bind(null, businessId),
+    initialBusinessActionState,
+  );
 
   const base = `/business/${encodeURIComponent(businessId)}/tables`;
 
-  const tabHref = (tableId: string) => {
-    const next = new URLSearchParams();
-    next.set("table", tableId);
-    if (query.search) next.set("search", query.search);
-    if (query.status !== "ACTIVE") next.set("status", query.status);
-    return `${base}?${next.toString()}`;
-  };
-
-  const pageHref = (nextPage: number) => {
+  const baseParams = (extra: Record<string, string | undefined> = {}) => {
     const next = new URLSearchParams();
     if (selectedTable) next.set("table", selectedTable.id);
     if (query.search) next.set("search", query.search);
     if (query.status !== "ACTIVE") next.set("status", query.status);
-    next.set("page", String(nextPage));
+    if (query.sort) next.set("sort", query.sort);
+    if (query.order !== "desc") next.set("order", query.order);
+    if (query.filterKey && query.filterValue) {
+      next.set("fkey", query.filterKey);
+      next.set("fval", query.filterValue);
+    }
+    for (const [key, entry] of Object.entries(extra)) {
+      if (entry) next.set(key, entry);
+      else next.delete(key);
+    }
+    return next;
+  };
+
+  const tabHref = (tableId: string) => `${base}?${baseParams({ table: tableId, page: undefined })}`;
+
+  const pageHref = (nextPage: number) =>
+    `${base}?${baseParams({ page: String(nextPage) })}`;
+
+  const sortHref = (key: string) => {
+    const next = baseParams({ page: undefined });
+    if (query.sort !== key) {
+      next.set("sort", key);
+      next.set("order", "asc");
+    } else if (query.order === "asc") {
+      next.set("order", "desc");
+    } else {
+      next.delete("sort");
+      next.delete("order");
+    }
+    return `${base}?${next.toString()}`;
+  };
+
+  const filterHref = (key: string, entry: string) => {
+    const next = baseParams({ page: undefined });
+    const trimmed = entry.trim();
+    if (trimmed) {
+      next.set("fkey", key);
+      next.set("fval", trimmed);
+    } else {
+      next.delete("fkey");
+      next.delete("fval");
+    }
     return `${base}?${next.toString()}`;
   };
 
@@ -247,6 +300,12 @@ export function TablesManager({
           ) : null}
           {canCreateTable ? (
             <>
+              <Link
+                href={`/business/${encodeURIComponent(businessId)}/scan`}
+                className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-50"
+              >
+                Scan to table
+              </Link>
               <ToolbarButton panel="import" current={panel} onClick={() => toggle("import")}>
                 Upload file
               </ToolbarButton>
@@ -258,6 +317,11 @@ export function TablesManager({
           {selectedTable && canEditFields ? (
             <ToolbarButton panel="fields" current={panel} onClick={() => toggle("fields")}>
               Fields
+            </ToolbarButton>
+          ) : null}
+          {selectedTable && (canEditFields || canCreateTable) ? (
+            <ToolbarButton panel="table" current={panel} onClick={() => toggle("table")}>
+              Rename
             </ToolbarButton>
           ) : null}
         </div>
@@ -333,6 +397,69 @@ export function TablesManager({
         </section>
       ) : null}
 
+      {panel === "table" && selectedTable ? (
+        <section className="space-y-5 rounded-xl border border-emerald-100 bg-white p-5 shadow-sm">
+          <div>
+            <h2 className="text-lg font-semibold text-emerald-950">Table settings · {selectedTable.name}</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Renaming keeps every row. Duplicating copies the columns and, optionally, the rows into a
+              new sheet.
+            </p>
+          </div>
+
+          {canEditFields ? (
+            <form action={renameAction} className="grid gap-4 sm:grid-cols-2" aria-busy={renamePending}>
+              <input type="hidden" name="tableId" value={selectedTable.id} />
+              <TextField
+                id="table-rename"
+                name="name"
+                label="Table name"
+                required
+                defaultValue={selectedTable.name}
+                error={renameState.fieldErrors?.name?.[0]}
+              />
+              <TextAreaField
+                id="table-rename-description"
+                name="description"
+                label="Description"
+                defaultValue={selectedTable.description ?? ""}
+              />
+              <div className="sm:col-span-2">
+                <ActionMessage state={renameState} />
+                <ActionSubmitButton pending={renamePending}>Save table</ActionSubmitButton>
+              </div>
+            </form>
+          ) : (
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              You can view this table but not rename it.
+            </p>
+          )}
+
+          {canCreateTable ? (
+            <form
+              action={duplicateAction}
+              className="space-y-3 border-t border-emerald-100 pt-4"
+              aria-busy={duplicatePending}
+            >
+              <input type="hidden" name="tableId" value={selectedTable.id} />
+              <p className="text-sm text-slate-600">
+                Create “{selectedTable.name} copy” as a new sheet with the same columns.
+              </p>
+              {selectedTable.recordCount > 0 ? (
+                <CheckboxField
+                  id="duplicate-records"
+                  name="includeRecords"
+                  label={`Also copy ${selectedTable.recordCount} row${selectedTable.recordCount === 1 ? "" : "s"}`}
+                  defaultChecked
+                />
+              ) : null}
+              <ActionMessage state={duplicateState} />
+              <ActionSubmitButton pending={duplicatePending}>Duplicate table</ActionSubmitButton>
+            </form>
+          ) : null}
+        </section>
+      ) : null}
+
       {selectedTable ? (
         <section className="space-y-3">
           {selectedTable.fields.length === 0 ? (
@@ -351,14 +478,30 @@ export function TablesManager({
               canEditRecords={canEditRecords}
               canDeleteRecords={canDeleteRecords}
               recordsBasePath={base}
+              sort={query.sort}
+              order={query.order}
+              sortHref={sortHref}
+              filterKey={query.filterKey}
+              filterValue={query.filterValue}
+              filterHref={filterHref}
             />
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-slate-600">
-              {pagination.total} row{pagination.total === 1 ? "" : "s"}
-              {query.search ? ` matching “${query.search}”` : ""}
-            </p>
+            <div className="space-y-1">
+              <p className="text-sm text-slate-600">
+                {pagination.total} row{pagination.total === 1 ? "" : "s"}
+                {query.search ? ` matching “${query.search}”` : ""}
+                {query.filterValue
+                  ? ` · ${selectedTable.fields.find((field) => field.key === query.filterKey)?.label ?? query.filterKey} contains “${query.filterValue}”`
+                  : ""}
+              </p>
+              {query.sortLimited ? (
+                <p className="text-xs text-amber-700">
+                  This table is too large to sort by column, so it is shown newest first.
+                </p>
+              ) : null}
+            </div>
             <div className="flex items-center gap-4">
               {canCreateRecords ? (
                 <Link

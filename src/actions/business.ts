@@ -31,8 +31,11 @@ import {
   createCustomTable,
   deleteCustomField,
   deleteCustomTable,
+  duplicateCustomTable,
   updateCustomField,
   updateCustomRecord,
+  updateCustomRecordCell,
+  updateCustomTable,
 } from "@/lib/data/tables";
 import { submitOwnerPaymentClaim } from "@/lib/data/owner-billing";
 
@@ -553,6 +556,73 @@ export async function deleteTableAction(
   }
 }
 
+export async function updateTableAction(
+  businessId: string,
+  _previousState: BusinessActionState,
+  formData: FormData,
+): Promise<BusinessActionState> {
+  const parsed = tableSchema.safeParse({
+    tableId: value(formData, "tableId"),
+    name: value(formData, "name"),
+    description: value(formData, "description"),
+  });
+  if (!parsed.success || !parsed.data.tableId) {
+    return parsed.success
+      ? { status: "error", message: "Choose a table to update." }
+      : validationState(parsed.error);
+  }
+  const user = await requireUser();
+  try {
+    await updateCustomTable({
+      userId: user.id,
+      businessId,
+      tableId: parsed.data.tableId,
+      name: parsed.data.name,
+      description: parsed.data.description,
+    });
+    revalidateBusiness(businessId);
+    redirect(
+      `/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(parsed.data.tableId)}&saved=renamed`,
+    );
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+export async function duplicateTableAction(
+  businessId: string,
+  _previousState: BusinessActionState,
+  formData: FormData,
+): Promise<BusinessActionState> {
+  const parsed = z
+    .object({
+      tableId: z.string().min(10).max(64),
+      includeRecords: z.enum(["on", "off"]).optional(),
+    })
+    .safeParse({
+      tableId: value(formData, "tableId"),
+      includeRecords: value(formData, "includeRecords") === "on" ? "on" : "off",
+    });
+  if (!parsed.success) {
+    return validationState(parsed.error);
+  }
+  const user = await requireUser();
+  try {
+    const copy = await duplicateCustomTable({
+      userId: user.id,
+      businessId,
+      tableId: parsed.data.tableId,
+      includeRecords: parsed.data.includeRecords !== "off",
+    });
+    revalidateBusiness(businessId);
+    redirect(
+      `/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(copy.id)}&saved=duplicated`,
+    );
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
 export async function createFieldAction(
   businessId: string,
   _previousState: BusinessActionState,
@@ -709,6 +779,42 @@ export async function updateRecordAction(
     await updateCustomRecord({ userId: user.id, businessId, tableId: parsed.data.tableId, recordId: parsed.data.recordId, formData });
     revalidateBusiness(businessId);
     redirect(`/business/${encodeURIComponent(businessId)}/tables?table=${encodeURIComponent(parsed.data.tableId)}&saved=record`);
+  } catch (error) {
+    return actionError(error);
+  }
+}
+
+const recordCellSchema = z.object({
+  tableId: z.string().min(10).max(64),
+  recordId: recordIdSchema,
+  key: z.string().min(1).max(64),
+});
+
+export async function updateRecordCellAction(
+  businessId: string,
+  _previousState: BusinessActionState,
+  formData: FormData,
+): Promise<BusinessActionState> {
+  const parsed = recordCellSchema.safeParse({
+    tableId: value(formData, "tableId"),
+    recordId: value(formData, "recordId"),
+    key: value(formData, "key"),
+  });
+  if (!parsed.success) {
+    return validationState(parsed.error);
+  }
+  const user = await requireUser();
+  try {
+    await updateCustomRecordCell({
+      userId: user.id,
+      businessId,
+      tableId: parsed.data.tableId,
+      recordId: parsed.data.recordId,
+      key: parsed.data.key,
+      formData,
+    });
+    revalidateBusiness(businessId);
+    return { status: "success", message: "Cell saved." };
   } catch (error) {
     return actionError(error);
   }
